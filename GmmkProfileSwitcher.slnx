@@ -1,0 +1,9 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="GmmkProfileSwitcher/GmmkProfileSwitcher.csproj">
+    <Platform Project="x86" />
+  </Project>
+  <Project Path="GmmkProfileSwitcherLib/GmmkProfileSwitcherLib.csproj" />
+</Solution>
