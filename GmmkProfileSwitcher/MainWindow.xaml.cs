@@ -154,7 +154,19 @@ namespace GmmkProfileSwitcher
         /// </summary>
         private void BtnSave_Click(object sender, RoutedEventArgs e)
         {
-            this.Close(); // Hides the window, but tray icon remains / Закрывает окно, но иконка в трее остается
+            this.Hide(); // Hides the window to tray / Скрывает окно в трей
+        }
+
+        /// <summary>
+        /// Triggered when the window is trying to close (e.g. by clicking 'X').
+        /// Вызывается при попытке закрыть окно (например, нажатием на 'X').
+        /// </summary>
+        protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+        {
+            if (App.IsShuttingDown) return; // Allow actual close if shutting down / Разрешаем закрытие, если программа завершается
+            
+            e.Cancel = true; // Prevent the window from actually destroying itself / Предотвращаем уничтожение окна
+            this.Hide();     // Hide to tray instead / Вместо этого скрываем в трей
         }
     }
 

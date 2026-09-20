@@ -9,10 +9,15 @@
     <PlatformTarget>x86</PlatformTarget>
     <AssemblyName>GmmkProfileSwitcher</AssemblyName>
     <RootNamespace>GmmkProfileSwitcher</RootNamespace>
+    <ApplicationIcon>app.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\GmmkProfileSwitcherLib\GmmkProfileSwitcherLib.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="app.ico" />
   </ItemGroup>
 
 </Project>

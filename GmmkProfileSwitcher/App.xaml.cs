@@ -14,6 +14,7 @@ namespace GmmkProfileSwitcher
         private NotifyIcon _notifyIcon; // System tray icon / Иконка в системном трее
         private LayoutMonitor _layoutMonitor; // Background monitor for language changes / Фоновый монитор для смены языка
         private MainWindow _mainWindow; // The settings window / Окно настроек
+        private System.Threading.Mutex _instanceMutex; // To prevent multiple instances / Для предотвращения запуска нескольких копий
 
         /// <summary>
         /// Triggered when the application starts.
@@ -21,6 +22,17 @@ namespace GmmkProfileSwitcher
         /// </summary>
         private void Application_Startup(object sender, StartupEventArgs e)
         {
+            // Check if another instance is already running
+            // Проверка, запущена ли уже другая копия приложения
+            bool createdNew;
+            _instanceMutex = new System.Threading.Mutex(true, "GmmkProfileSwitcher_SingleInstance_Mutex", out createdNew);
+            if (!createdNew)
+            {
+                // Already running, exit silently / Уже запущено, тихо выходим
+                Shutdown();
+                return;
+            }
+
             // Load configuration from file
             // Загружаем конфигурацию из файла
             Configuration.Load();
@@ -28,7 +40,24 @@ namespace GmmkProfileSwitcher
             // Initialize NotifyIcon (System Tray)
             // Инициализация иконки для системного трея (возле часов)
             _notifyIcon = new NotifyIcon();
-            _notifyIcon.Icon = System.Drawing.SystemIcons.Information; // Fallback icon / Иконка по умолчанию
+            
+            try 
+            {
+                var streamInfo = System.Windows.Application.GetResourceStream(new Uri("pack://application:,,,/app.ico"));
+                if (streamInfo != null)
+                {
+                    _notifyIcon.Icon = new System.Drawing.Icon(streamInfo.Stream);
+                }
+                else
+                {
+                    _notifyIcon.Icon = System.Drawing.SystemIcons.Information;
+                }
+            }
+            catch 
+            {
+                _notifyIcon.Icon = System.Drawing.SystemIcons.Information; // Fallback
+            }
+            
             _notifyIcon.Visible = true;
             _notifyIcon.Text = "GMMK Profile Switcher";
             
@@ -72,23 +101,25 @@ namespace GmmkProfileSwitcher
         /// </summary>
         private void ShowSettings()
         {
-            // If window doesn't exist, create and show it
-            // Если окно не существует, создаем и показываем его
+            // If window doesn't exist, create it
+            // Если окно не существует, создаем его
             if (_mainWindow == null)
             {
                 _mainWindow = new MainWindow();
-                _mainWindow.Closed += (s, args) => _mainWindow = null; // Clean up on close / Очистка при закрытии
                 _mainWindow.Show();
             }
             else
             {
-                // Restore window if minimized and bring to front
-                // Разворачиваем окно, если оно свернуто, и выводим на передний план
+                // Restore window if hidden or minimized and bring to front
+                // Разворачиваем окно, если оно скрыто или свернуто, и выводим на передний план
+                _mainWindow.Show();
                 if (_mainWindow.WindowState == WindowState.Minimized)
                     _mainWindow.WindowState = WindowState.Normal;
                 _mainWindow.Activate();
             }
         }
+
+        public static bool IsShuttingDown { get; private set; } = false;
 
         /// <summary>
         /// Event handler for the "Exit" menu item.
@@ -96,6 +127,7 @@ namespace GmmkProfileSwitcher
         /// </summary>
         private void Exit_Click(object sender, EventArgs e)
         {
+            IsShuttingDown = true;
             // Gracefully shutdown the WPF application
             // Корректно завершаем работу WPF-приложения
             Shutdown();
