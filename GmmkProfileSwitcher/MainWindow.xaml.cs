@@ -17,11 +17,70 @@ namespace GmmkProfileSwitcher
         // Collection for DataBinding to the UI list / Коллекция для привязки данных к списку в UI
         public ObservableCollection<LanguageItem> Languages { get; set; } = new ObservableCollection<LanguageItem>();
 
-        public MainWindow()
+        // Reference to the background monitor, used for manual reinitialization
+        // Ссылка на фоновый монитор, используется для ручной реинициализации
+        private readonly LayoutMonitor _monitor;
+
+        public MainWindow(LayoutMonitor monitor)
         {
             InitializeComponent();
+            _monitor = monitor;
             LoadSettingsToUI();
             this.DataContext = this; // Set DataContext for WPF binding / Устанавливаем DataContext для биндинга
+
+            if (_monitor != null)
+            {
+                _monitor.StatusChanged += OnMonitorStatusChanged;
+            }
+            UpdateStatusText();
+        }
+
+        /// <summary>
+        /// Handles status notifications coming from the background monitor thread.
+        /// Обрабатывает уведомления о состоянии, приходящие из фонового потока монитора.
+        /// </summary>
+        private void OnMonitorStatusChanged(object sender, string message)
+        {
+            Dispatcher.BeginInvoke(new Action(() => txtStatus.Text = message));
+        }
+
+        /// <summary>
+        /// Refreshes the diagnostic status line.
+        /// Обновляет строку диагностики.
+        /// </summary>
+        private void UpdateStatusText()
+        {
+            if (_monitor == null)
+            {
+                txtStatus.Text = "Monitor unavailable / Монитор недоступен";
+                return;
+            }
+
+            txtStatus.Text = string.Format(
+                "Hook: {0} | Keyboard: {1}",
+                _monitor.IsHookInstalled ? "OK" : "NOT INSTALLED",
+                _monitor.IsKeyboardConnected ? "found" : "not found");
+        }
+
+        /// <summary>
+        /// Forces the monitor to reinstall the system hook and re-detect the keyboard.
+        /// Принудительно заставляет монитор переустановить системный хук и заново найти клавиатуру.
+        /// </summary>
+        private void BtnReinit_Click(object sender, RoutedEventArgs e)
+        {
+            if (_monitor == null) return;
+
+            btnReinit.IsEnabled = false;
+            txtStatus.Text = "Reinitializing... / Реинициализация...";
+
+            // Run off the UI thread: the HID write sequence blocks for a few hundred milliseconds.
+            // Выполняем вне UI-потока: отправка HID-пакетов блокирует на несколько сотен миллисекунд.
+            System.Threading.Tasks.Task.Run(() => _monitor.Reinitialize())
+                .ContinueWith(_ => Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    btnReinit.IsEnabled = true;
+                    UpdateStatusText();
+                })));
         }
 
         /// <summary>
@@ -33,6 +92,7 @@ namespace GmmkProfileSwitcher
             // Set checkboxes based on loaded configuration / Устанавливаем чекбоксы на основе загруженной конфигурации
             chkStartWithWindows.IsChecked = Configuration.Current.StartWithWindows;
             chkStartMinimized.IsChecked = Configuration.Current.StartMinimized;
+            chkEnableLogging.IsChecked = Configuration.Current.EnableLogging;
 
             // Load installed languages from Windows OS / Получаем установленные языки из ОС Windows
             var installedLangs = InputLanguage.InstalledInputLanguages;
@@ -85,6 +145,10 @@ namespace GmmkProfileSwitcher
             // Update configuration object / Обновляем объект конфигурации
             Configuration.Current.StartWithWindows = chkStartWithWindows.IsChecked == true;
             Configuration.Current.StartMinimized = chkStartMinimized.IsChecked == true;
+            Configuration.Current.EnableLogging = chkEnableLogging.IsChecked == true;
+
+            // Turn the logger on/off right away / Сразу включаем/выключаем логгер
+            Configuration.ApplyLoggingSetting();
             
             // Apply autorun changes to OS registry / Применяем изменения автозагрузки в реестр ОС
             UpdateAutorunRegistry(Configuration.Current.StartWithWindows);
@@ -149,6 +213,32 @@ namespace GmmkProfileSwitcher
         }
 
         /// <summary>
+        /// Opens today's log file, or the containing folder if no log exists yet.
+        /// Открывает сегодняшний файл лога, либо папку с логами, если файла ещё нет.
+        /// </summary>
+        private void BtnOpenLog_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                string logPath = GmmkProfileSwitcherLib.Logger.CurrentLogFilePath;
+
+                if (!string.IsNullOrEmpty(logPath) && System.IO.File.Exists(logPath))
+                {
+                    System.Diagnostics.Process.Start(logPath);
+                }
+                else
+                {
+                    System.IO.Directory.CreateDirectory(Configuration.DataDirectory);
+                    System.Diagnostics.Process.Start(Configuration.DataDirectory);
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Windows.MessageBox.Show($"Failed to open log (Не удалось открыть лог): {ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// Triggered when the user clicks the "Save & Close" button.
         /// Вызывается при нажатии кнопки "Save & Close".
         /// </summary>
@@ -167,6 +257,16 @@ namespace GmmkProfileSwitcher
             
             e.Cancel = true; // Prevent the window from actually destroying itself / Предотвращаем уничтожение окна
             this.Hide();     // Hide to tray instead / Вместо этого скрываем в трей
+        }
+
+        /// <summary>
+        /// Refresh diagnostics every time the window becomes visible again.
+        /// Обновляем диагностику каждый раз, когда окно снова становится видимым.
+        /// </summary>
+        protected override void OnActivated(EventArgs e)
+        {
+            base.OnActivated(e);
+            UpdateStatusText();
         }
     }
 

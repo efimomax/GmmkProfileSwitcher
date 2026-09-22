@@ -29,6 +29,13 @@ namespace GmmkProfileSwitcher
         public bool StartMinimized { get; set; } = false;
 
         /// <summary>
+        /// True if diagnostic messages should be written to a log file next to the settings.
+        /// True, если диагностические сообщения нужно писать в лог-файл рядом с настройками.
+        /// </summary>
+        [DataMember]
+        public bool EnableLogging { get; set; } = false;
+
+        /// <summary>
         /// Maps Language ID (LangID) to Profile Number (1, 2, 3).
         /// Сопоставляет ID языка (LangID) с номером профиля (1, 2, 3).
         /// </summary>
@@ -45,6 +52,12 @@ namespace GmmkProfileSwitcher
         // Path to the configuration folder in the user's AppData directory
         // Путь к папке с конфигурацией в директории AppData пользователя
         private static readonly string ConfigDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "GmmkProfileSwitcher");
+
+        /// <summary>
+        /// Folder where settings and log files are stored.
+        /// Папка, в которой хранятся настройки и файлы логов.
+        /// </summary>
+        public static string DataDirectory => ConfigDirectory;
         
         // Full path to the JSON settings file
         // Полный путь к файлу настроек JSON
@@ -67,6 +80,8 @@ namespace GmmkProfileSwitcher
         /// </summary>
         public static void Load()
         {
+            GmmkProfileSwitcherLib.Logger.Initialize(ConfigDirectory);
+
             if (File.Exists(ConfigFilePath))
             {
                 try
@@ -91,6 +106,19 @@ namespace GmmkProfileSwitcher
                     System.Diagnostics.Debug.WriteLine($"Failed to load config (Ошибка загрузки конфига): {ex.Message}");
                 }
             }
+
+            // Apply the logging switch as soon as settings are known.
+            // Применяем переключатель логирования сразу, как только настройки известны.
+            ApplyLoggingSetting();
+        }
+
+        /// <summary>
+        /// Syncs the logger state with the current configuration.
+        /// Синхронизирует состояние логгера с текущей конфигурацией.
+        /// </summary>
+        public static void ApplyLoggingSetting()
+        {
+            GmmkProfileSwitcherLib.Logger.IsEnabled = Current.EnableLogging;
         }
 
         /// <summary>

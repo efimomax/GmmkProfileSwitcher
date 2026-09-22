@@ -105,7 +105,7 @@ namespace GmmkProfileSwitcher
             // Если окно не существует, создаем его
             if (_mainWindow == null)
             {
-                _mainWindow = new MainWindow();
+                _mainWindow = new MainWindow(_layoutMonitor);
                 _mainWindow.Show();
             }
             else
