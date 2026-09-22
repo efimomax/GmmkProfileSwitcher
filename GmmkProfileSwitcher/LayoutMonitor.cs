@@ -246,7 +246,9 @@ namespace GmmkProfileSwitcher
                     Task.Run(() => PollingLoop(_cts.Token));
                 }
 
-                CheckLayout();
+                // Reinitialization is an explicit request, so wait for the lock instead of skipping.
+                // Реинициализация — явный запрос, поэтому ждём блокировку, а не пропускаем.
+                CheckLayout(waitForLock: true);
 
                 RaiseStatus(_keyboard != null
                     ? "Reinitialized, keyboard found / Реинициализировано, клавиатура найдена"
@@ -382,13 +384,17 @@ namespace GmmkProfileSwitcher
         /// Checks the current keyboard layout of the active window and updates the keyboard profile.
         /// Проверяет текущую раскладку клавиатуры активного окна и обновляет профиль клавиатуры.
         /// </summary>
-        private void CheckLayout()
+        /// <param name="waitForLock">
+        /// True to block until the lock is free (explicit user/system request), false to skip if busy (polling).
+        /// True — ждать освобождения блокировки (явный запрос пользователя/системы), false — пропустить, если занято (опрос).
+        /// </param>
+        private void CheckLayout(bool waitForLock = false)
         {
-            // Serialize access: concurrent HID writes from the hook and the polling loop
-            // were the main reason for randomly skipped profile switches.
-            // Сериализуем доступ: параллельные записи в HID из хука и цикла опроса были
-            // основной причиной случайных пропусков переключения профиля.
-            if (!Monitor.TryEnter(_checkLock)) return;
+            // Serialize access: a profile switch takes ~300ms, and the polling loop must not
+            // overlap with an explicit reinitialization request.
+            // Сериализуем доступ: переключение профиля занимает ~300мс, и цикл опроса не должен
+            // накладываться на явный запрос реинициализации.
+            if (!Monitor.TryEnter(_checkLock, waitForLock ? Timeout.Infinite : 0)) return;
             try
             {
                 if (_keyboard == null)
@@ -446,6 +452,7 @@ namespace GmmkProfileSwitcher
         public void Dispose()
         {
             Stop();
+            StatusChanged = null;
         }
     }
 }

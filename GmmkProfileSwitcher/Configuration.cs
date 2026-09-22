@@ -103,7 +103,7 @@ namespace GmmkProfileSwitcher
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"Failed to load config (Ошибка загрузки конфига): {ex.Message}");
+                    GmmkProfileSwitcherLib.Logger.Log($"Failed to load config: {ex}");
                 }
             }
 
@@ -148,7 +148,7 @@ namespace GmmkProfileSwitcher
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Failed to save config (Ошибка сохранения конфига): {ex.Message}");
+                GmmkProfileSwitcherLib.Logger.Log($"Failed to save config: {ex}");
             }
         }
     }
