@@ -4,6 +4,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Forms;
+using GmmkProfileSwitcherLib;
 using Microsoft.Win32;
 
 namespace GmmkProfileSwitcher
@@ -96,14 +97,15 @@ namespace GmmkProfileSwitcher
 
             // Load installed languages from Windows OS / Получаем установленные языки из ОС Windows
             var installedLangs = InputLanguage.InstalledInputLanguages;
-            
+
             int defaultProfileCounter = 1;
+            bool mapChanged = false;
 
             foreach (InputLanguage lang in installedLangs)
             {
                 // Get the unique Language ID / Получаем уникальный ID языка
                 int langId = (int)lang.Handle.ToInt64() & 0xFFFF;
-                
+
                 // If it's in config, use it; otherwise assign default 1, 2, 3
                 // Если язык есть в конфиге, используем его; иначе назначаем по умолчанию 1, 2, 3
                 int profile = defaultProfileCounter;
@@ -117,6 +119,7 @@ namespace GmmkProfileSwitcher
                     // Для новых раскладок назначаем профили по возрастанию до 3, затем сбрасываем на 1
                     Configuration.Current.LanguageToProfileMap[langId] = profile;
                     defaultProfileCounter = defaultProfileCounter < 3 ? defaultProfileCounter + 1 : 1;
+                    mapChanged = true;
                 }
 
                 // Add to the list to display in UI / Добавляем в список для отображения в UI
@@ -124,9 +127,17 @@ namespace GmmkProfileSwitcher
                 {
                     LangId = langId,
                     LanguageName = lang.Culture.DisplayName,
-                    SelectedProfile = profile,
-                    Parent = this
+                    SelectedProfile = profile
                 });
+            }
+
+            // Persist defaults generated for newly discovered layouts, otherwise they are
+            // regenerated on every launch and may differ from what the user just saw.
+            // Сохраняем значения по умолчанию для новых раскладок, иначе они будут заново
+            // генерироваться при каждом запуске и могут отличаться от только что показанных.
+            if (mapChanged)
+            {
+                Configuration.Save();
             }
 
             // Bind the ListView to our collection / Привязываем ListView к нашей коллекции
@@ -194,6 +205,12 @@ namespace GmmkProfileSwitcher
                 string runKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
                 using (RegistryKey key = Registry.CurrentUser.OpenSubKey(runKey, true))
                 {
+                    if (key == null)
+                    {
+                        Logger.Log("Autorun: Run key is not accessible");
+                        return;
+                    }
+
                     if (enable)
                     {
                         // Add path to current executable with quotes / Записываем путь к текущему .exe файлу в кавычках
@@ -208,6 +225,7 @@ namespace GmmkProfileSwitcher
             }
             catch (Exception ex)
             {
+                Logger.Log($"Autorun registry update failed: {ex}");
                 System.Windows.MessageBox.Show($"Failed to update registry for autorun (Ошибка обновления реестра): {ex.Message}");
             }
         }
@@ -220,7 +238,7 @@ namespace GmmkProfileSwitcher
         {
             try
             {
-                string logPath = GmmkProfileSwitcherLib.Logger.CurrentLogFilePath;
+                string logPath = Logger.CurrentLogFilePath;
 
                 if (!string.IsNullOrEmpty(logPath) && System.IO.File.Exists(logPath))
                 {
@@ -253,8 +271,16 @@ namespace GmmkProfileSwitcher
         /// </summary>
         protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
         {
-            if (App.IsShuttingDown) return; // Allow actual close if shutting down / Разрешаем закрытие, если программа завершается
-            
+            if (App.IsShuttingDown)
+            {
+                // Allow actual close if shutting down / Разрешаем закрытие, если программа завершается
+                if (_monitor != null)
+                {
+                    _monitor.StatusChanged -= OnMonitorStatusChanged;
+                }
+                return;
+            }
+
             e.Cancel = true; // Prevent the window from actually destroying itself / Предотвращаем уничтожение окна
             this.Hide();     // Hide to tray instead / Вместо этого скрываем в трей
         }
@@ -274,11 +300,29 @@ namespace GmmkProfileSwitcher
     /// Represents a single language setting row in the UI.
     /// Представляет одну строку настройки языка в интерфейсе.
     /// </summary>
+    /// <remarks>
+    /// This class intentionally does NOT implement INotifyPropertyChanged.
+    /// The binding is effectively one-way in practice: the collection is built once in
+    /// LoadSettingsToUI() and SelectedProfile is only ever changed by the user through the
+    /// ComboBox, never from code. Without a programmatic writer there is nothing to notify
+    /// about, so the interface would add boilerplate with no observable effect.
+    /// If a scenario appears where profiles are updated from code (for example a
+    /// "reset mappings to defaults" command), this class must implement
+    /// INotifyPropertyChanged, otherwise the UI will silently show stale values.
+    ///
+    /// Этот класс намеренно НЕ реализует INotifyPropertyChanged.
+    /// Фактически привязка работает в одну сторону: коллекция строится один раз в
+    /// LoadSettingsToUI(), а SelectedProfile меняется только пользователем через ComboBox и
+    /// никогда из кода. Раз никто не пишет значение программно, уведомлять не о чем, и
+    /// интерфейс добавил бы шаблонный код без видимого эффекта.
+    /// Если появится сценарий с обновлением профилей из кода (например, команда
+    /// «сбросить привязки к значениям по умолчанию»), этот класс обязан реализовать
+    /// INotifyPropertyChanged, иначе интерфейс будет молча показывать устаревшие значения.
+    /// </remarks>
     public class LanguageItem
     {
         public int LangId { get; set; } // The Language ID / ID языка
         public string LanguageName { get; set; } // The display name of the language / Отображаемое имя языка
         public int SelectedProfile { get; set; } // The assigned keyboard profile / Назначенный профиль клавиатуры
-        public MainWindow Parent { get; set; } // Reference to main window / Ссылка на главное окно
     }
 }
